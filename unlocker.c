@@ -8,7 +8,7 @@
 // 2. Grant capability: `sudo setcap cap_sys_ptrace+ep ./unlocker`
 // 3. Run as a normal user.
 //
-// Usage: ./unlocker <PID> <FPS> [INTERVAL_MS]
+// Usage: ./unlocker <PID> <FPS> [INTERVAL_MS] [FIFO_PATH]
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -17,8 +17,10 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #define ANY_ (int16_t)-1
 
@@ -66,6 +68,24 @@ int ends_with(const char *str, const char *suffix) {
     size_t len_suffix = strlen(suffix);
     if (len_suffix > len_str) return 0;
     return !strncmp(str + len_str - len_suffix, suffix, len_suffix);
+}
+
+int setup_fifo(const char* fifo_path) {
+    // 创建命名管道
+    if (mkfifo(fifo_path, 0666) == -1) {
+        if (errno != EEXIST) {
+            perror("mkfifo");
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void close_fifo(const int fifo_fd, const char* fifo_path) {
+    if (fifo_fd != -1) {
+        close(fifo_fd);
+        unlink(fifo_path);
+    }
 }
 
 int verify_process(pid_t pid) {
@@ -176,10 +196,13 @@ int main(int argc, char **argv) {
     int32_t target_fps;
     int is_dry_run;
     int64_t interval = 5000;
+    char *fifo_path = NULL;
+    int fifo_fd = -1;
+    int use_fifo = 0;
     uintptr_t fps_addr;
 
-    if (argc < 3 || argc > 4) {
-        fprintf(stderr, "Usage: %s <PID> <FPS> [INTERVAL_MS]\n", argv[0]);
+    if (argc < 3 || argc > 5) {
+        fprintf(stderr, "Usage: %s <PID> <FPS> [INTERVAL_MS] [FIFO_PATH]\n", argv[0]);
         fprintf(stderr, "       If FPS < 1, program enters dry-run mode (read-only).\n");
         fprintf(stderr, "\nNote: Run 'sudo setcap cap_sys_ptrace+ep %s' once to run without sudo.\n", argv[0]);
         return 1;
@@ -188,8 +211,11 @@ int main(int argc, char **argv) {
     pid = atoi(argv[1]);
     target_fps = atoi(argv[2]);
     is_dry_run = (target_fps < 1);
-    if (argc == 4) {
+    if (argc >= 4) {
         interval = atol(argv[3]);
+    }
+    if (argc == 5) {
+        fifo_path = argv[4];
     }
     
     if (!verify_process(pid)) {
@@ -218,11 +244,32 @@ int main(int argc, char **argv) {
         }
 
         if (interval > 0) {
+            if (setup_fifo(fifo_path)) {
+                fifo_fd = open(fifo_path, O_RDONLY | O_NONBLOCK);
+                if (fifo_fd != -1) {
+                    use_fifo = 1;
+                }
+            }
+            
             while (write_process_memory(pid, fps_addr, &target_fps, sizeof(target_fps))) {
+                if (use_fifo) {
+                    char buffer[32];
+                    const ssize_t bytes_read = read(fifo_fd, buffer, sizeof(buffer) - 1);
+                    if (bytes_read > 0) {
+                        buffer[bytes_read] = '\0';
+                        const int new_fps = atoi(buffer);
+                        if (new_fps > 0) {
+                            target_fps = new_fps;
+                            printf("Updated FPS limit to: %d\n", target_fps);
+                        }
+                    }
+                }
+                
                 usleep(interval * 1000);
             }
         }
     }
 
+    close_fifo(fifo_fd, fifo_path);
     return 0;
 }
