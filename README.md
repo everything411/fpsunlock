@@ -52,22 +52,9 @@ The command line interface is `./unlocker <PID> <FPS> [INTERVAL_MS]`, where:
 
 **DO NOT PUT THE FPS UNLOCKER INTO THE GAME DIRECTORY.**
 
-## CN Server Workaround (unlocker_cn)
+## CN Server Notice
 
-**Note: This section applies specifically to the CN server. Global server users usually do not need this workaround.**
-
-Since **Version Luna III (v6.2)**, the CN server version of Genshin Impact has exhibited instability when running under Wine. The anti-cheat mechanism appears to behave inconsistently, leading to likely race conditions or something that cause the game to crash on startup.
-
-However, `strace` attaching to the game process effectively "slows down" the initialization, allowing the game to launch correctly. We provide a helper program, `unlocker_cn`, which simulates this behavior to ensure stability.
-
-**WARN: DO NOT USE THIS ON PROTON!** Proton implements detection for ptrace, which allows internal windows programs to potentially detect ptrace.
-
-### Usage
-```bash
-./unlocker_cn <TRACE_TIME> <FPS> <FPS_WRITE_INTERVAL> wine <Game> [GameArgs...]
-```
-
-Typically, setting TRACE_TIME to 30 seconds and FPS_WRITE_INTERVAL to 5000 milliseconds is sufficient. The FPS parameter only accepts values between 61 and 165; values outside this range will disable the FPS unlock feature.
+An issue in crypt32 in mainline wine prevents CN GI/ZZZ from working. Please use Spritz-Wine-TkG-AAGL v11.9-1 and later / Spritz-Wine-CachyOS 10.0-11 and later / dwproton 11.0-2 and later.
 
 ## Safety
 **This program is technically breaking the game's Terms of Service**, although I am not aware of any bans caused just by changing the FPS limit. **Use at your own risk.** If you somehow manage to receive a ban, please report it on the issue tracker.
